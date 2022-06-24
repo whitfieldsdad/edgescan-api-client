@@ -1,0 +1,12 @@
+test.py
+
+*.pyc
+*.tar
+*.tar.gz
+*.jsonl
+
+.idea
+.coverage
+.pytest_cache
+dist/
+*/__pycache__/*
