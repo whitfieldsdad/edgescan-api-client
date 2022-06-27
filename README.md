@@ -2,25 +2,6 @@
 
 ---
 
-## Index
-
-- [Overview](#overview)
-  - [Edgescan](#edgescan)
-    - [Data model](#data-model)
-    - [Caveats](#caveats)
-- [Features](#features)
-- [Installation](#installation)
-  - [Environment variables](#environment-variables)
-- [Testing](#testing)
-  - [Code coverage](#code-coverage)
-- [Docker](#docker)
-  - [Building the container](#building-the-container)
-  - [Exporting the container to a file](#exporting-the-container-to-a-file)
-- [General usage](#general-usage)
-  - [Python](#python)
-    - [Search for assets](#search-for-assets)
-
-
 ## Overview
 
 ### Edgescan
@@ -203,7 +184,7 @@ Options:
   --help                  Show this message and exit.
 ```
 
-#### Count active vs. inactive hosts
+##### Count active vs. inactive hosts
 
 You can count active hosts like this:
 

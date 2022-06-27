@@ -433,7 +433,6 @@ class Client:
         )
         return _len(licenses)
 
-
 def _len(it: Any) -> int:
     try:
         return len(it)
