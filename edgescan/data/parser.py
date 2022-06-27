@@ -1,4 +1,4 @@
-from typing import Optional
+from typing import Optional, Any
 from edgescan.constants import ASSETS, VULNERABILITIES, HOSTS
 from edgescan.data.types.assessment import Assessment
 from edgescan.data.types.asset import Asset
@@ -10,9 +10,27 @@ from edgescan.data.types.vulnerability import Vulnerability
 import edgescan.types
 import edgescan.time
 
+CREATE_TIME = 'create_time'
+UPDATE_TIME = 'update_time'
 
-def parse_object(data: dict, collection_type: str):
-    parser = _PARSERS_BY_COLLECTION_TYPE[collection_type]
+SYNONYMS = {
+    CREATE_TIME: ['created_at'],
+    UPDATE_TIME: ['updated_at']
+}
+
+
+def get(data: dict, k: str) -> Any:
+    if k in data:
+        return data[k]
+
+    for s in SYNONYMS.get(k, []):
+        if s in data:
+            return data[s]
+    raise KeyError(k)
+
+
+def parse_object(data: dict, resource_type: str):
+    parser = _PARSERS_BY_RESOURCE_TYPE[resource_type]
     return parser(data)
 
 
@@ -65,7 +83,7 @@ def _parse_timestamps(data: Optional[dict]) -> Optional[dict]:
     return data
 
 
-_PARSERS_BY_COLLECTION_TYPE = {
+_PARSERS_BY_RESOURCE_TYPE = {
     ASSETS: parse_asset,
     VULNERABILITIES: parse_vulnerability,
     HOSTS: parse_host,

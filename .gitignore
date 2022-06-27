@@ -1,5 +1,6 @@
 test.py
 
+.DS_Store
 *.pyc
 *.tar
 *.tar.gz
@@ -7,6 +8,7 @@ test.py
 
 .idea
 .coverage
+coverage/
 .pytest_cache
 dist/
 */__pycache__/*

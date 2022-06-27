@@ -16,13 +16,12 @@ class HostTestCases(unittest.TestCase):
 
     def test_command_group(self):
         host = next(self.edgescan_api.iter_hosts())
-
         commands = [
-            ['hosts', 'get-host', '--host-id', host.id],
+            ['hosts', 'get-host', '--host-id', host['id']],
             ['hosts', 'get-hosts'],
-            ['hosts', 'get-hosts', '--host-ids', host.id],
+            ['hosts', 'get-hosts', '--host-ids', host['id']],
             ['hosts', 'count-hosts'],
-            ['hosts', 'count-hosts', '--host-ids', host.id],
+            ['hosts', 'count-hosts', '--host-ids', host['id']],
         ]
         for args in commands:
             result = runner.invoke(*args)

@@ -16,8 +16,7 @@ class LicenseTestCases(unittest.TestCase):
 
     def test_command_group(self):
         example = next(self.edgescan_api.iter_licenses())
-        license_id = example.id
-
+        license_id = example['id']
         commands = [
             ['licenses', 'get-license', '--license-id', license_id],
             ['licenses', 'get-licenses'],

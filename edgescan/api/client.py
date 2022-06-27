@@ -1,15 +1,24 @@
-from typing import Iterator, Any, Optional, Iterable
-from edgescan.constants import COLLECTION_TYPES, DEFAULT_API_KEY, DEFAULT_HOST
-from edgescan.data.types.asset import Asset
+import collections
+from typing import Iterator, Any, Optional, Dict
+from edgescan.constants import DEFAULT_API_KEY, DEFAULT_HOST, HOSTS, ASSETS, VULNERABILITIES
 from edgescan.data.types.host import Host
 from edgescan.data.types.license import License
 from edgescan.data.types.vulnerability import Vulnerability
+from edgescan.data.parser import CREATE_TIME, UPDATE_TIME
 
+import edgescan.logging
+import edgescan.logging
+import edgescan.time
 import edgescan.patterns
 import edgescan.data.parser as parser
 import edgescan.api.session
 import urllib.parse
-import datetime
+
+from edgescan.type_hints import TIME, STRS, INTS
+
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 class Client:
@@ -30,578 +39,403 @@ class Client:
     def vulnerabilities_url(self) -> str:
         return urllib.parse.urljoin(self.url, 'api/v1/vulnerabilities.json')
 
-    def get_asset(self, asset_id: int) -> Optional[Asset]:
-        return next(self.iter_assets(ids=[asset_id]), None)
+    @property
+    def download_urls(self) -> Dict[str, str]:
+        return {
+            HOSTS: self.hosts_url,
+            ASSETS: self.assets_url,
+            VULNERABILITIES: self.vulnerabilities_url,
+        }
 
+    def get_download_url(self, resource_type: str) -> str:
+        return self.download_urls[resource_type]
+
+    def iter_objects(
+            self,
+            resource_type: str,
+            ids: Optional[INTS] = None,
+            names: Optional[STRS] = None,
+            min_create_time: Optional[TIME] = None,
+            max_create_time: Optional[TIME] = None,
+            min_update_time: Optional[TIME] = None,
+            max_update_time: Optional[TIME] = None) -> Iterator[dict]:
+
+        ids = frozenset(ids) if ids else None
+        names = frozenset(names) if names else None
+
+        rows = self._iter_objects(resource_type=resource_type)
+        for row in rows:
+
+            #: Filter objects by ID.
+            if ids and row['id'] not in ids:
+                continue
+
+            #: Fit objects to timeframe.
+            for attr, min_time, max_time in [
+                [CREATE_TIME, min_create_time, max_create_time],
+                [UPDATE_TIME, min_update_time, max_update_time],
+            ]:
+                if min_time or max_time:
+                    t = parser.get(row, attr)
+                    if t is None or not edgescan.time.in_range(t, min_time, max_time):
+                        continue
+
+            #: Filter objects by name.
+            if names and not edgescan.patterns.matches(row['name'], names):
+                continue
+
+            yield row
+
+    def _iter_objects(self, resource_type: str) -> Iterator[dict]:
+        url = self.download_urls[resource_type]
+        response = self.session.get(url)
+        response.raise_for_status()
+
+        reply = response.json()
+        for row in reply[resource_type]:
+            if row:
+                yield row
+
+    def count_objects(
+            self,
+            resource_type: str,
+            min_create_time: Optional[TIME] = None,
+            max_create_time: Optional[TIME] = None,
+            min_update_time: Optional[TIME] = None,
+            max_update_time: Optional[TIME] = None) -> int:
+
+        if min_create_time or max_create_time or min_update_time or max_update_time:
+            rows = self.iter_objects(
+                resource_type=resource_type,
+                min_create_time=min_create_time,
+                max_create_time=max_create_time,
+                min_update_time=min_update_time,
+                max_update_time=max_update_time,
+            )
+            total = _len(rows)
+        else:
+            url = self.download_urls[resource_type]
+            response = self.session.get(url)
+            response.raise_for_status()
+
+            reply = response.json()
+            total = reply['total']
+        return total
+
+    def get_asset(self, asset_id: int) -> Optional[dict]:
+        return next(self.iter_assets(ids=[asset_id]), None)
+    
     def iter_assets(
             self,
-            ids: Optional[Iterable[int]] = None,
-            names: Optional[Iterable[str]] = None,
-            tags: Optional[Iterable[str]] = None,
-            host_ids: Optional[Iterable[int]] = None,
-            hostnames: Optional[Iterable[str]] = None,
-            ip_addresses: Optional[Iterable[str]] = None,
-            os_types: Optional[Iterable[str]] = None,
-            os_versions: Optional[Iterable[str]] = None,
-            alive: Optional[bool] = None,
-            vulnerability_ids: Optional[Iterable[int]] = None,
-            vulnerability_names: Optional[Iterable[str]] = None,
-            cve_ids: Optional[Iterable[str]] = None,
-            min_asset_create_time: Optional[datetime.datetime] = None,
-            max_asset_create_time: Optional[datetime.datetime] = None,
-            min_asset_update_time: Optional[datetime.datetime] = None,
-            max_asset_update_time: Optional[datetime.datetime] = None,
-            min_next_assessment_time: Optional[datetime.datetime] = None,
-            max_next_assessment_time: Optional[datetime.datetime] = None,
-            min_last_assessment_time: Optional[datetime.datetime] = None,
-            max_last_assessment_time: Optional[datetime.datetime] = None,
-            min_last_host_scan_time: Optional[datetime.datetime] = None,
-            max_last_host_scan_time: Optional[datetime.datetime] = None,
-            min_host_last_seen_time: Optional[datetime.datetime] = None,
-            max_host_last_seen_time: Optional[datetime.datetime] = None,
-            min_vulnerability_create_time: Optional[datetime.datetime] = None,
-            max_vulnerability_create_time: Optional[datetime.datetime] = None,
-            min_vulnerability_update_time: Optional[datetime.datetime] = None,
-            max_vulnerability_update_time: Optional[datetime.datetime] = None,
-            min_vulnerability_open_time: Optional[datetime.datetime] = None,
-            max_vulnerability_open_time: Optional[datetime.datetime] = None,
-            min_vulnerability_close_time: Optional[datetime.datetime] = None,
-            max_vulnerability_close_time: Optional[datetime.datetime] = None) -> Iterator[Asset]:
+            ids: Optional[INTS] = None,
+            names: Optional[STRS] = None,
+            tags: Optional[STRS] = None,
+            min_create_time: Optional[TIME] = None,
+            max_create_time: Optional[TIME] = None,
+            min_update_time: Optional[TIME] = None,
+            max_update_time: Optional[TIME] = None) -> Iterator[dict]:
 
-        #: If looking up assets based on related hosts.
-        if host_ids or (min_host_last_seen_time is not None) or (max_host_last_seen_time is not None):
-            hosts = self.iter_hosts(
-                ids=host_ids,
-                hostnames=hostnames,
-                ip_addresses=ip_addresses,
-                os_types=os_types,
-                os_versions=os_versions,
-                alive=alive,
-                asset_ids=ids,
-                asset_tags=tags,
-                min_host_last_seen_time=min_host_last_seen_time,
-                max_host_last_seen_time=max_host_last_seen_time,
-            )
-            ids = list({host.asset_id for host in hosts})
+        kwargs = locals()
+        del kwargs['self']
 
-        #: If looking up assets based on related vulnerabilities.
-        if vulnerability_ids or vulnerability_names or \
-                (min_vulnerability_create_time is not None) or \
-                (max_vulnerability_create_time is not None) or \
-                (min_vulnerability_update_time is not None) or \
-                (max_vulnerability_update_time is not None) or \
-                (min_vulnerability_open_time is not None) or \
-                (max_vulnerability_open_time is not None) or \
-                (min_vulnerability_close_time is not None) or \
-                (max_vulnerability_close_time is not None):
-            vulnerabilities = self.iter_vulnerabilities(
-                ids=vulnerability_ids,
-                names=vulnerability_names,
-                cve_ids=cve_ids,
-                asset_ids=ids,
-                min_vulnerability_create_time=min_vulnerability_create_time,
-                max_vulnerability_create_time=max_vulnerability_create_time,
-                min_vulnerability_update_time=min_vulnerability_update_time,
-                max_vulnerability_update_time=max_vulnerability_update_time,
-                min_vulnerability_open_time=min_vulnerability_open_time,
-                max_vulnerability_open_time=max_vulnerability_open_time,
-                min_vulnerability_close_time=min_vulnerability_close_time,
-                max_vulnerability_close_time=max_vulnerability_close_time,
-            )
-            ids = list({vulnerability.asset_id for vulnerability in vulnerabilities})
+        if any(kwargs.values()):
+            hint = edgescan.logging.get_hint(**kwargs)
+            logger.info("Listing assets (%s)", hint)
+        else:
+            logger.info("Listing assets")
 
-        #: Lookup assets.
-        for asset in self._iter_objects(url=self.assets_url):
-            if not asset.matches(
-                    ids=ids,
-                    names=names,
-                    tags=tags,
-                    min_create_time=min_asset_create_time,
-                    max_create_time=max_asset_create_time,
-                    min_update_time=min_asset_update_time,
-                    max_update_time=max_asset_update_time,
-                    min_next_assessment_time=min_next_assessment_time,
-                    max_next_assessment_time=max_next_assessment_time,
-                    min_last_assessment_time=min_last_assessment_time,
-                    max_last_assessment_time=max_last_assessment_time,
-                    min_last_host_scan_time=min_last_host_scan_time,
-                    max_last_host_scan_time=max_last_host_scan_time,
-            ):
+        for asset in self.iter_objects(
+            resource_type=ASSETS,
+            ids=ids,
+            names=names,
+            min_create_time=min_create_time,
+            max_create_time=max_create_time,
+            min_update_time=min_update_time,
+            max_update_time=max_update_time,
+        ):
+            #: Filter assets by tag.
+            if tags and not edgescan.patterns.matches(asset['tags'], tags):
                 continue
 
             yield asset
 
     def count_assets(
             self,
-            ids: Optional[Iterable[int]] = None,
-            names: Optional[Iterable[str]] = None,
-            tags: Optional[Iterable[str]] = None,
-            host_ids: Optional[Iterable[int]] = None,
-            hostnames: Optional[Iterable[str]] = None,
-            ip_addresses: Optional[Iterable[str]] = None,
-            os_types: Optional[Iterable[str]] = None,
-            os_versions: Optional[Iterable[str]] = None,
-            alive: Optional[bool] = None,
-            vulnerability_ids: Optional[Iterable[int]] = None,
-            vulnerability_names: Optional[Iterable[str]] = None,
-            cve_ids: Optional[Iterable[str]] = None,
-            min_asset_create_time: Optional[datetime.datetime] = None,
-            max_asset_create_time: Optional[datetime.datetime] = None,
-            min_asset_update_time: Optional[datetime.datetime] = None,
-            max_asset_update_time: Optional[datetime.datetime] = None,
-            min_next_assessment_time: Optional[datetime.datetime] = None,
-            max_next_assessment_time: Optional[datetime.datetime] = None,
-            min_last_assessment_time: Optional[datetime.datetime] = None,
-            max_last_assessment_time: Optional[datetime.datetime] = None,
-            min_last_host_scan_time: Optional[datetime.datetime] = None,
-            max_last_host_scan_time: Optional[datetime.datetime] = None,
-            min_host_last_seen_time: Optional[datetime.datetime] = None,
-            max_host_last_seen_time: Optional[datetime.datetime] = None,
-            min_vulnerability_create_time: Optional[datetime.datetime] = None,
-            max_vulnerability_create_time: Optional[datetime.datetime] = None,
-            min_vulnerability_update_time: Optional[datetime.datetime] = None,
-            max_vulnerability_update_time: Optional[datetime.datetime] = None,
-            min_vulnerability_open_time: Optional[datetime.datetime] = None,
-            max_vulnerability_open_time: Optional[datetime.datetime] = None,
-            min_vulnerability_close_time: Optional[datetime.datetime] = None,
-            max_vulnerability_close_time: Optional[datetime.datetime] = None) -> int:
+            ids: Optional[INTS] = None,
+            names: Optional[STRS] = None,
+            tags: Optional[STRS] = None,
+            min_create_time: Optional[TIME] = None,
+            max_create_time: Optional[TIME] = None,
+            min_update_time: Optional[TIME] = None,
+            max_update_time: Optional[TIME] = None) -> int:
+
+        kwargs = locals()
+        del kwargs['self']
+
+        if any(kwargs.values()):
+            logger.info("Counting assets (%s)", edgescan.logging.get_hint(**kwargs))
+        else:
+            logger.info("Counting assets")
 
         assets = self.iter_assets(
             ids=ids,
             names=names,
             tags=tags,
-            host_ids=host_ids,
-            hostnames=hostnames,
-            ip_addresses=ip_addresses,
-            os_types=os_types,
-            os_versions=os_versions,
-            alive=alive,
-            vulnerability_ids=vulnerability_ids,
-            vulnerability_names=vulnerability_names,
-            cve_ids=cve_ids,
-            min_asset_create_time=min_asset_create_time,
-            max_asset_create_time=max_asset_create_time,
-            min_asset_update_time=min_asset_update_time,
-            max_asset_update_time=max_asset_update_time,
-            min_next_assessment_time=min_next_assessment_time,
-            max_next_assessment_time=max_next_assessment_time,
-            min_last_assessment_time=min_last_assessment_time,
-            max_last_assessment_time=max_last_assessment_time,
-            min_last_host_scan_time=min_last_host_scan_time,
-            max_last_host_scan_time=max_last_host_scan_time,
-            min_host_last_seen_time=min_host_last_seen_time,
-            max_host_last_seen_time=max_host_last_seen_time,
-            min_vulnerability_create_time=min_vulnerability_create_time,
-            max_vulnerability_create_time=max_vulnerability_create_time,
-            min_vulnerability_update_time=min_vulnerability_update_time,
-            max_vulnerability_update_time=max_vulnerability_update_time,
-            min_vulnerability_open_time=min_vulnerability_open_time,
-            max_vulnerability_open_time=max_vulnerability_open_time,
-            min_vulnerability_close_time=min_vulnerability_close_time,
-            max_vulnerability_close_time=max_vulnerability_close_time,
+            min_create_time=min_create_time,
+            max_create_time=max_create_time,
+            min_update_time=min_update_time,
+            max_update_time=max_update_time,
         )
-        return sum(1 for _ in assets)
+        return _len(assets)
 
     def get_host(self, host_id: int) -> Optional[Host]:
         return next(self.iter_hosts(ids=[host_id]), None)
 
     def iter_hosts(
             self,
-            ids: Optional[Iterable[int]] = None,
-            hostnames: Optional[Iterable[str]] = None,
-            ip_addresses: Optional[Iterable[str]] = None,
-            os_types: Optional[Iterable[str]] = None,
-            os_versions: Optional[Iterable[str]] = None,
+            ids: Optional[INTS] = None,
+            locations: Optional[STRS] = None,
             alive: Optional[bool] = None,
-            asset_ids: Optional[Iterable[int]] = None,
-            asset_names: Optional[Iterable[str]] = None,
-            asset_tags: Optional[Iterable[str]] = None,
-            vulnerability_ids: Optional[Iterable[int]] = None,
-            vulnerability_names: Optional[Iterable[str]] = None,
-            cve_ids: Optional[Iterable[str]] = None,
-            min_asset_create_time: Optional[datetime.datetime] = None,
-            max_asset_create_time: Optional[datetime.datetime] = None,
-            min_asset_update_time: Optional[datetime.datetime] = None,
-            max_asset_update_time: Optional[datetime.datetime] = None,
-            min_next_assessment_time: Optional[datetime.datetime] = None,
-            max_next_assessment_time: Optional[datetime.datetime] = None,
-            min_last_assessment_time: Optional[datetime.datetime] = None,
-            max_last_assessment_time: Optional[datetime.datetime] = None,
-            min_last_host_scan_time: Optional[datetime.datetime] = None,
-            max_last_host_scan_time: Optional[datetime.datetime] = None,
-            min_host_last_seen_time: Optional[datetime.datetime] = None,
-            max_host_last_seen_time: Optional[datetime.datetime] = None,
-            min_vulnerability_create_time: Optional[datetime.datetime] = None,
-            max_vulnerability_create_time: Optional[datetime.datetime] = None,
-            min_vulnerability_update_time: Optional[datetime.datetime] = None,
-            max_vulnerability_update_time: Optional[datetime.datetime] = None,
-            min_vulnerability_open_time: Optional[datetime.datetime] = None,
-            max_vulnerability_open_time: Optional[datetime.datetime] = None,
-            min_vulnerability_close_time: Optional[datetime.datetime] = None,
-            max_vulnerability_close_time: Optional[datetime.datetime] = None) -> Iterator[Host]:
+            asset_ids: Optional[INTS] = None,
+            min_create_time: Optional[TIME] = None,
+            max_create_time: Optional[TIME] = None,
+            min_update_time: Optional[TIME] = None,
+            max_update_time: Optional[TIME] = None) -> Iterator[dict]:
 
-        #: If filtering hosts based on related assets.
-        if asset_tags:
-            assets = self.iter_assets(
-                ids=asset_ids,
-                names=asset_names,
-                tags=asset_tags,
-                min_asset_create_time=min_asset_create_time,
-                max_asset_create_time=max_asset_create_time,
-                min_asset_update_time=min_asset_update_time,
-                max_asset_update_time=max_asset_update_time,
-                min_next_assessment_time=min_next_assessment_time,
-                max_next_assessment_time=max_next_assessment_time,
-                min_last_assessment_time=min_last_assessment_time,
-                max_last_assessment_time=max_last_assessment_time,
-                min_last_host_scan_time=min_last_host_scan_time,
-                max_last_host_scan_time=max_last_host_scan_time,
-            )
-            asset_ids = list({asset.id for asset in assets})
+        kwargs = locals()
+        del kwargs['self']
 
-        #: If filtering hosts based on related vulnerabilities.
-        if vulnerability_ids or vulnerability_names or cve_ids:
-            vulnerabilities = self.iter_vulnerabilities(
-                ids=vulnerability_ids,
-                names=vulnerability_names,
-                cve_ids=cve_ids,
-                min_vulnerability_create_time=min_vulnerability_create_time,
-                max_vulnerability_create_time=max_vulnerability_create_time,
-                min_vulnerability_update_time=min_vulnerability_update_time,
-                max_vulnerability_update_time=max_vulnerability_update_time,
-                min_vulnerability_open_time=min_vulnerability_open_time,
-                max_vulnerability_open_time=max_vulnerability_open_time,
-                min_vulnerability_close_time=min_vulnerability_close_time,
-                max_vulnerability_close_time=max_vulnerability_close_time,
-            )
-            asset_ids = list({v.asset_id for v in vulnerabilities})
+        if any(kwargs.values()):
+            hint = edgescan.logging.get_hint(**kwargs)
+            logger.info("Listing hosts (%s)", hint)
+        else:
+            logger.info("Listing hosts")
 
-        #: The location of a host may be specified by IP address or hostname.
-        ip_addresses = set(ip_addresses) if ip_addresses else set()
-        hostnames = set(hostnames) if hostnames else set()
-        locations = ip_addresses | hostnames
-
-        for host in self._iter_objects(url=self.hosts_url):
-            if not host.matches(
-                    ids=ids,
-                    asset_ids=asset_ids,
-                    locations=locations,
-                    os_types=os_types,
-                    os_versions=os_versions,
-                    alive=alive,
-                    min_last_seen_time=min_host_last_seen_time,
-                    max_last_seen_time=max_host_last_seen_time,
-            ):
+        for host in self.iter_objects(
+            resource_type=HOSTS,
+            ids=ids,
+            min_create_time=min_create_time,
+            max_create_time=max_create_time,
+            min_update_time=min_update_time,
+            max_update_time=max_update_time,
+        ):
+            if asset_ids and host['asset_id'] not in asset_ids:
                 continue
+
+            if locations and not edgescan.patterns.matches(host['location'], locations):
+                pass
+
+            if alive is not None:
+                status = host['status']
+                if alive is True and status != 'alive':
+                    continue
+
+                if alive is False and status == 'alive':
+                    continue
 
             yield host
 
     def count_hosts(
             self,
-            ids: Optional[Iterable[int]] = None,
-            hostnames: Optional[Iterable[str]] = None,
-            ip_addresses: Optional[Iterable[str]] = None,
-            os_types: Optional[Iterable[str]] = None,
-            os_versions: Optional[Iterable[str]] = None,
+            ids: Optional[INTS] = None,
+            locations: Optional[STRS] = None,
             alive: Optional[bool] = None,
-            asset_ids: Optional[Iterable[int]] = None,
-            asset_names: Optional[Iterable[str]] = None,
-            asset_tags: Optional[Iterable[str]] = None,
-            vulnerability_ids: Optional[Iterable[int]] = None,
-            vulnerability_names: Optional[Iterable[str]] = None,
-            cve_ids: Optional[Iterable[str]] = None,
-            min_asset_create_time: Optional[datetime.datetime] = None,
-            max_asset_create_time: Optional[datetime.datetime] = None,
-            min_asset_update_time: Optional[datetime.datetime] = None,
-            max_asset_update_time: Optional[datetime.datetime] = None,
-            min_next_assessment_time: Optional[datetime.datetime] = None,
-            max_next_assessment_time: Optional[datetime.datetime] = None,
-            min_last_assessment_time: Optional[datetime.datetime] = None,
-            max_last_assessment_time: Optional[datetime.datetime] = None,
-            min_last_host_scan_time: Optional[datetime.datetime] = None,
-            max_last_host_scan_time: Optional[datetime.datetime] = None,
-            min_host_last_seen_time: Optional[datetime.datetime] = None,
-            max_host_last_seen_time: Optional[datetime.datetime] = None,
-            min_vulnerability_create_time: Optional[datetime.datetime] = None,
-            max_vulnerability_create_time: Optional[datetime.datetime] = None,
-            min_vulnerability_update_time: Optional[datetime.datetime] = None,
-            max_vulnerability_update_time: Optional[datetime.datetime] = None,
-            min_vulnerability_open_time: Optional[datetime.datetime] = None,
-            max_vulnerability_open_time: Optional[datetime.datetime] = None,
-            min_vulnerability_close_time: Optional[datetime.datetime] = None,
-            max_vulnerability_close_time: Optional[datetime.datetime] = None) -> int:
+            asset_ids: Optional[INTS] = None,
+            min_create_time: Optional[TIME] = None,
+            max_create_time: Optional[TIME] = None,
+            min_update_time: Optional[TIME] = None,
+            max_update_time: Optional[TIME] = None) -> int:
+
+        kwargs = locals()
+        del kwargs['self']
+
+        if any(kwargs.values()):
+            logger.info("Counting hosts (%s)", edgescan.logging.get_hint(**kwargs))
+        else:
+            logger.info("Counting hosts")
 
         hosts = self.iter_hosts(
             ids=ids,
-            hostnames=hostnames,
-            ip_addresses=ip_addresses,
-            os_types=os_types,
-            os_versions=os_versions,
-            alive=alive,
+            locations=locations,
             asset_ids=asset_ids,
-            asset_names=asset_names,
-            asset_tags=asset_tags,
-            vulnerability_ids=vulnerability_ids,
-            vulnerability_names=vulnerability_names,
-            cve_ids=cve_ids,
-            min_asset_create_time=min_asset_create_time,
-            max_asset_create_time=max_asset_create_time,
-            min_asset_update_time=min_asset_update_time,
-            max_asset_update_time=max_asset_update_time,
-            min_next_assessment_time=min_next_assessment_time,
-            max_next_assessment_time=max_next_assessment_time,
-            min_last_assessment_time=min_last_assessment_time,
-            max_last_assessment_time=max_last_assessment_time,
-            min_last_host_scan_time=min_last_host_scan_time,
-            max_last_host_scan_time=max_last_host_scan_time,
-            min_host_last_seen_time=min_host_last_seen_time,
-            max_host_last_seen_time=max_host_last_seen_time,
-            min_vulnerability_create_time=min_vulnerability_create_time,
-            max_vulnerability_create_time=max_vulnerability_create_time,
-            min_vulnerability_update_time=min_vulnerability_update_time,
-            max_vulnerability_update_time=max_vulnerability_update_time,
-            min_vulnerability_open_time=min_vulnerability_open_time,
-            max_vulnerability_open_time=max_vulnerability_open_time,
-            min_vulnerability_close_time=min_vulnerability_close_time,
-            max_vulnerability_close_time=max_vulnerability_close_time,
+            alive=alive,
+            min_create_time=min_create_time,
+            max_create_time=max_create_time,
+            min_update_time=min_update_time,
+            max_update_time=max_update_time,
         )
-        return sum(1 for _ in hosts)
+        return _len(hosts)
 
     def get_vulnerability(self, vulnerability_id: int) -> Optional[Vulnerability]:
         return next(self.iter_vulnerabilities(ids=[vulnerability_id]), None)
 
     def iter_vulnerabilities(
             self,
-            ids: Optional[Iterable[int]] = None,
-            names: Optional[Iterable[str]] = None,
-            cve_ids: Optional[Iterable[str]] = None,
-            locations: Optional[Iterable[str]] = None,
-            affects_pci_compliance: Optional[bool] = None,
+            ids: Optional[INTS] = None,
+            cve_ids: Optional[STRS] = None,
+            asset_ids: Optional[INTS] = None,
+            host_ids: Optional[INTS] = None,
+            host_is_alive: Optional[bool] = None,
+            locations: Optional[STRS] = None,
             include_application_layer_vulnerabilities: Optional[bool] = True,
             include_network_layer_vulnerabilities: Optional[bool] = True,
-            asset_ids: Optional[Iterable[int]] = None,
-            asset_names: Optional[Iterable[str]] = None,
-            asset_tags: Optional[Iterable[str]] = None,
-            host_ids: Optional[Iterable[int]] = None,
-            hostnames: Optional[Iterable[str]] = None,
-            ip_addresses: Optional[Iterable[str]] = None,
-            os_types: Optional[Iterable[str]] = None,
-            os_versions: Optional[Iterable[str]] = None,
-            alive: Optional[bool] = None,
-            min_asset_create_time: Optional[datetime.datetime] = None,
-            max_asset_create_time: Optional[datetime.datetime] = None,
-            min_asset_update_time: Optional[datetime.datetime] = None,
-            max_asset_update_time: Optional[datetime.datetime] = None,
-            min_next_assessment_time: Optional[datetime.datetime] = None,
-            max_next_assessment_time: Optional[datetime.datetime] = None,
-            min_last_assessment_time: Optional[datetime.datetime] = None,
-            max_last_assessment_time: Optional[datetime.datetime] = None,
-            min_last_host_scan_time: Optional[datetime.datetime] = None,
-            max_last_host_scan_time: Optional[datetime.datetime] = None,
-            min_host_last_seen_time: Optional[datetime.datetime] = None,
-            max_host_last_seen_time: Optional[datetime.datetime] = None,
-            min_vulnerability_create_time: Optional[datetime.datetime] = None,
-            max_vulnerability_create_time: Optional[datetime.datetime] = None,
-            min_vulnerability_update_time: Optional[datetime.datetime] = None,
-            max_vulnerability_update_time: Optional[datetime.datetime] = None,
-            min_vulnerability_open_time: Optional[datetime.datetime] = None,
-            max_vulnerability_open_time: Optional[datetime.datetime] = None,
-            min_vulnerability_close_time: Optional[datetime.datetime] = None,
-            max_vulnerability_close_time: Optional[datetime.datetime] = None) -> Iterator[Vulnerability]:
+            min_create_time: Optional[TIME] = None,
+            max_create_time: Optional[TIME] = None,
+            min_update_time: Optional[TIME] = None,
+            max_update_time: Optional[TIME] = None) -> Iterator[dict]:
 
-        #: If filtering vulnerabilities based on related assets.
-        if asset_ids or asset_tags or host_ids:
-            assets = self.iter_assets(
-                ids=asset_ids,
-                names=asset_names,
-                tags=asset_tags,
-                host_ids=host_ids,
-                hostnames=hostnames,
-                ip_addresses=ip_addresses,
-                os_types=os_types,
-                os_versions=os_versions,
-                alive=alive,
-                min_host_last_seen_time=min_host_last_seen_time,
-                max_host_last_seen_time=max_host_last_seen_time,
-                min_asset_create_time=min_asset_create_time,
-                max_asset_create_time=max_asset_create_time,
-                min_asset_update_time=min_asset_update_time,
-                max_asset_update_time=max_asset_update_time,
-                min_next_assessment_time=min_next_assessment_time,
-                max_next_assessment_time=max_next_assessment_time,
-                min_last_assessment_time=min_last_assessment_time,
-                max_last_assessment_time=max_last_assessment_time,
-                min_last_host_scan_time=min_last_host_scan_time,
-                max_last_host_scan_time=max_last_host_scan_time,
-            )
-            asset_ids = list({asset.id for asset in assets})
+        kwargs = locals()
+        del kwargs['self']
 
-        for vulnerability in self._iter_objects(url=self.vulnerabilities_url):
-            if not vulnerability.matches(
-                    ids=ids,
-                    names=names,
-                    cve_ids=cve_ids,
-                    asset_ids=asset_ids,
-                    locations=locations,
-                    affects_pci_compliance=affects_pci_compliance,
-                    include_application_layer_vulnerabilities=include_application_layer_vulnerabilities,
-                    include_network_layer_vulnerabilities=include_network_layer_vulnerabilities,
-                    min_create_time=min_vulnerability_create_time,
-                    max_create_time=max_vulnerability_create_time,
-                    min_update_time=min_vulnerability_update_time,
-                    max_update_time=max_vulnerability_update_time,
-                    min_open_time=min_vulnerability_open_time,
-                    max_open_time=max_vulnerability_open_time,
-                    min_close_time=min_vulnerability_close_time,
-                    max_close_time=max_vulnerability_close_time,
-            ):
+        if any(kwargs.values()):
+            hint = edgescan.logging.get_hint(**kwargs)
+            logger.info("Listing vulnerabilities (%s)", hint)
+        else:
+            logger.info("Listing vulnerabilities")
+
+        #: Hosts are linked to vulnerabilities by location.
+        if locations or host_ids or host_is_alive:
+            locations = set(locations) if locations else set()
+            hosts = tuple(self.iter_hosts(ids=host_ids, locations=locations, alive=host_is_alive))
+            for host in hosts:
+                locations.add(host['location'])
+                locations.update(set(host['hostnames']))
+
+            #: No matching locations means no matching hosts
+            if not locations:
+                return
+
+        for vulnerability in self.iter_objects(
+            resource_type=VULNERABILITIES,
+            ids=ids,
+            min_create_time=min_create_time,
+            max_create_time=max_create_time,
+            min_update_time=min_update_time,
+            max_update_time=max_update_time,
+        ):
+            #: Filter vulnerabilities by asset ID.
+            if asset_ids and vulnerability['asset_id'] not in asset_ids:
                 continue
+
+            #: Filter vulnerabilities by location.
+            if locations and vulnerability['location'] not in locations:
+                continue
+
+            #: Filter vulnerabilities by CVE ID.
+            if cve_ids and set(cve_ids).isdisjoint(set(vulnerability['cves'])):
+                continue
+
+            #: Filter vulnerabilities by layer.
+            if include_application_layer_vulnerabilities or include_network_layer_vulnerabilities:
+                layer = vulnerability['layer']
+                if layer == 'app' and include_application_layer_vulnerabilities is False:
+                    continue
+                elif layer == 'network' and include_network_layer_vulnerabilities is False:
+                    continue
 
             yield vulnerability
 
     def count_vulnerabilities(
             self,
-            ids: Optional[Iterable[int]] = None,
-            names: Optional[Iterable[str]] = None,
-            cve_ids: Optional[Iterable[str]] = None,
-            locations: Optional[Iterable[str]] = None,
-            affects_pci_compliance: Optional[bool] = None,
+            ids: Optional[INTS] = None,
+            cve_ids: Optional[STRS] = None,
+            asset_ids: Optional[INTS] = None,
+            host_ids: Optional[INTS] = None,
+            host_is_alive: Optional[bool] = None,
+            locations: Optional[STRS] = None,
             include_application_layer_vulnerabilities: Optional[bool] = True,
             include_network_layer_vulnerabilities: Optional[bool] = True,
-            asset_ids: Optional[Iterable[int]] = None,
-            asset_names: Optional[Iterable[str]] = None,
-            asset_tags: Optional[Iterable[str]] = None,
-            host_ids: Optional[Iterable[int]] = None,
-            hostnames: Optional[Iterable[str]] = None,
-            ip_addresses: Optional[Iterable[str]] = None,
-            os_types: Optional[Iterable[str]] = None,
-            os_versions: Optional[Iterable[str]] = None,
-            alive: Optional[bool] = None,
-            min_asset_create_time: Optional[datetime.datetime] = None,
-            max_asset_create_time: Optional[datetime.datetime] = None,
-            min_asset_update_time: Optional[datetime.datetime] = None,
-            max_asset_update_time: Optional[datetime.datetime] = None,
-            min_next_assessment_time: Optional[datetime.datetime] = None,
-            max_next_assessment_time: Optional[datetime.datetime] = None,
-            min_last_assessment_time: Optional[datetime.datetime] = None,
-            max_last_assessment_time: Optional[datetime.datetime] = None,
-            min_last_host_scan_time: Optional[datetime.datetime] = None,
-            max_last_host_scan_time: Optional[datetime.datetime] = None,
-            min_host_last_seen_time: Optional[datetime.datetime] = None,
-            max_host_last_seen_time: Optional[datetime.datetime] = None,
-            min_vulnerability_create_time: Optional[datetime.datetime] = None,
-            max_vulnerability_create_time: Optional[datetime.datetime] = None,
-            min_vulnerability_update_time: Optional[datetime.datetime] = None,
-            max_vulnerability_update_time: Optional[datetime.datetime] = None,
-            min_vulnerability_open_time: Optional[datetime.datetime] = None,
-            max_vulnerability_open_time: Optional[datetime.datetime] = None,
-            min_vulnerability_close_time: Optional[datetime.datetime] = None,
-            max_vulnerability_close_time: Optional[datetime.datetime] = None) -> int:
+            min_create_time: Optional[TIME] = None,
+            max_create_time: Optional[TIME] = None,
+            min_update_time: Optional[TIME] = None,
+            max_update_time: Optional[TIME] = None) -> int:
+
+        kwargs = locals()
+        del kwargs['self']
+
+        if any(kwargs.values()):
+            logger.info("Counting vulnerabilities (%s)", edgescan.logging.get_hint(**kwargs))
+        else:
+            logger.info("Counting vulnerabilities")
 
         vulnerabilities = self.iter_vulnerabilities(
             ids=ids,
-            names=names,
             cve_ids=cve_ids,
+            asset_ids=asset_ids,
+            host_ids=host_ids,
             locations=locations,
-            affects_pci_compliance=affects_pci_compliance,
             include_application_layer_vulnerabilities=include_application_layer_vulnerabilities,
             include_network_layer_vulnerabilities=include_network_layer_vulnerabilities,
-            asset_ids=asset_ids,
-            asset_names=asset_names,
-            asset_tags=asset_tags,
-            host_ids=host_ids,
-            hostnames=hostnames,
-            ip_addresses=ip_addresses,
-            os_types=os_types,
-            os_versions=os_versions,
-            alive=alive,
-            min_asset_create_time=min_asset_create_time,
-            max_asset_create_time=max_asset_create_time,
-            min_asset_update_time=min_asset_update_time,
-            max_asset_update_time=max_asset_update_time,
-            min_next_assessment_time=min_next_assessment_time,
-            max_next_assessment_time=max_next_assessment_time,
-            min_last_assessment_time=min_last_assessment_time,
-            max_last_assessment_time=max_last_assessment_time,
-            min_last_host_scan_time=min_last_host_scan_time,
-            max_last_host_scan_time=max_last_host_scan_time,
-            min_host_last_seen_time=min_host_last_seen_time,
-            max_host_last_seen_time=max_host_last_seen_time,
-            min_vulnerability_create_time=min_vulnerability_create_time,
-            max_vulnerability_create_time=max_vulnerability_create_time,
-            min_vulnerability_update_time=min_vulnerability_update_time,
-            max_vulnerability_update_time=max_vulnerability_update_time,
-            min_vulnerability_open_time=min_vulnerability_open_time,
-            max_vulnerability_open_time=max_vulnerability_open_time,
-            min_vulnerability_close_time=min_vulnerability_close_time,
-            max_vulnerability_close_time=max_vulnerability_close_time,
+            host_is_alive=host_is_alive,
+            min_create_time=min_create_time,
+            max_create_time=max_create_time,
+            min_update_time=min_update_time,
+            max_update_time=max_update_time,
         )
-        return sum(1 for _ in vulnerabilities)
+        return _len(vulnerabilities)
 
     def get_license(self, license_id: int) -> Optional[License]:
         return next(self.iter_licenses(ids=[license_id]), None)
 
     def iter_licenses(
             self,
-            ids: Optional[Iterable[int]] = None,
-            names: Optional[Iterable[str]] = None,
-            expired: Optional[bool] = None) -> Iterator[License]:
+            ids: Optional[INTS] = None,
+            names: Optional[STRS] = None,
+            expired: Optional[bool] = None) -> Iterator[dict]:
+
+        kwargs = locals()
+        del kwargs['self']
+
+        if any(kwargs.values()):
+            hint = edgescan.logging.get_hint(**kwargs)
+            logger.info("Listing licenses (%s)", hint)
+        else:
+            logger.info("Listing licenses")
 
         for row in self._iter_licenses():
-            if row.matches(
-                    ids=ids,
-                    names=names,
-                    expired=expired,
-            ):
-                yield row
+            if ids and row['id'] not in ids:
+                continue
 
-    def _iter_licenses(self) -> Iterator[License]:
+            if names and not edgescan.patterns.matches(row['name'], names):
+                continue
+
+            if expired is not None and row['expired'] != expired:
+                continue
+
+            yield row
+
+    def _iter_licenses(self) -> Iterator[dict]:
         seen = set()
         for asset in self.iter_assets():
-            active_license = asset.active_license
-            if active_license.id not in seen:
-                seen.add(active_license.id)
+            active_license = asset['active_licence']
+            if active_license['id'] not in seen:
+                seen.add(active_license['id'])
                 yield active_license
 
     def count_licenses(
             self,
-            ids: Optional[Iterable[int]] = None,
-            names: Optional[Iterable[str]] = None,
+            ids: Optional[INTS] = None,
+            names: Optional[STRS] = None,
             expired: Optional[bool] = None) -> int:
+
+        kwargs = locals()
+        del kwargs['self']
+
+        if any(kwargs.values()):
+            logger.info("Counting licenses (%s)", edgescan.logging.get_hint(**kwargs))
+        else:
+            logger.info("Counting licenses")
 
         licenses = self.iter_licenses(
             ids=ids,
             names=names,
             expired=expired,
         )
-        return sum(1 for _ in licenses)
-
-    def _iter_objects(self, url: str) -> Iterator[Any]:
-        collection_type = _get_collection_type_from_url(url)
-        response = self.session.get(url)
-        response.raise_for_status()
-
-        reply = response.json()
-        for row in reply[collection_type]:
-            row = parser.parse_object(row, collection_type=collection_type)
-            if row:
-                yield row
-
-    def _count_objects(self, url: str) -> int:
-        response = self.session.get(url)
-        response.raise_for_status()
-
-        reply = response.json()
-        return reply['total']
+        return _len(licenses)
 
 
-def _get_collection_type_from_url(url: str) -> str:
-    v = urllib.parse.urlsplit(url).path.split('/')[-1]
-    if v.endswith('.json'):
-        v = v[:-5]
-
-    if v not in COLLECTION_TYPES:
-        raise ValueError("Failed to parse collection type from URL: {} - got '{}' - allowed: {}".format(
-            url, v, COLLECTION_TYPES
-        ))
-    return v
+def _len(it: Any) -> int:
+    try:
+        return len(it)
+    except TypeError:
+        return sum(1 for _ in it)

@@ -4,6 +4,8 @@ from typing import Optional, List, Union
 import edgescan.time
 import datetime
 
+from edgescan.type_hints import TIME
+
 
 @dataclass(frozen=True)
 class Assessment:
@@ -13,7 +15,7 @@ class Assessment:
     created_at: datetime.datetime
 
     @property
-    def create_time(self) -> datetime.datetime:
+    def create_time(self) -> TIME:
         return self.created_at
 
     def matches(

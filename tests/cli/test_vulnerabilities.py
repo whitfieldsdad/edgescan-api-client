@@ -16,13 +16,13 @@ class VulnerabilityTestCases(unittest.TestCase):
 
     def test_command_group(self):
         vulnerability = next(self.edgescan_api.iter_vulnerabilities())
-
+        vulnerability_id = vulnerability['id']
         commands = [
-            ['vulnerabilities', 'get-vulnerability', '--vulnerability-id', vulnerability.id],
+            ['vulnerabilities', 'get-vulnerability', '--vulnerability-id', vulnerability_id],
             ['vulnerabilities', 'get-vulnerabilities'],
-            ['vulnerabilities', 'get-vulnerabilities', '--vulnerability-ids', vulnerability.id],
+            ['vulnerabilities', 'get-vulnerabilities', '--vulnerability-ids', vulnerability_id],
             ['vulnerabilities', 'count-vulnerabilities'],
-            ['vulnerabilities', 'count-vulnerabilities', '--vulnerability-ids', vulnerability.id],
+            ['vulnerabilities', 'count-vulnerabilities', '--vulnerability-ids', vulnerability_id],
         ]
         for args in commands:
             result = runner.invoke(*args)

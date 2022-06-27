@@ -1,3 +1,5 @@
+.PHONY: coverage
+
 CONTAINER_NAME="edgescan-api-client"
 CONTAINER_REGISTRY_HOST="localhost:5000"
 
@@ -22,6 +24,10 @@ update:
 
 test:
 	poetry run coverage run -m pytest --durations=0
+
+coverage:
+	poetry run coverage json -o coverage/json/coverage.json --pretty-print
+	poetry run coverage html -d coverage/html
 
 release:
 	poetry publish

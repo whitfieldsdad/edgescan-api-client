@@ -9,8 +9,7 @@ from edgescan.cli.helpers import str_to_strs, str_to_ints
 
 
 @click.group()
-@click.pass_context
-def licenses(_):
+def licenses():
     """
     Query or count licenses.
     """
@@ -19,9 +18,11 @@ def licenses(_):
 
 @licenses.command()
 @click.option('--license-id', type=int, required=True)
-@click.pass_context
-def get_license(ctx: click.Context, license_id: int):
-    api = Client(**ctx.obj['config']['edgescan'])
+def get_license(license_id: int):
+    """
+    Lookup licenses by ID.
+    """
+    api = Client()
     row = api.get_license(license_id)
     if row:
         txt = edgescan.serialization.to_json(row)
@@ -33,23 +34,21 @@ def get_license(ctx: click.Context, license_id: int):
 @click.option('--license-names')
 @click.option('--expired/--not-expired', default=None)
 @click.option('--limit', type=int)
-@click.pass_context
 def get_licenses(
-        ctx: click.Context,
         license_ids: Optional[str],
         license_names: Optional[str],
         expired: Optional[bool],
         limit: Optional[int]):
-    api = Client(**ctx.obj['config']['edgescan'])
+    """
+    List licenses.
+    """
+    api = Client()
     rows = api.iter_licenses(
         ids=str_to_ints(license_ids),
         names=str_to_strs(license_names),
         expired=expired,
     )
-    if limit:
-        rows = itertools.islice(rows, limit)
-
-    for row in rows:
+    for row in itertools.islice(rows, limit):
         txt = edgescan.serialization.to_json(row)
         click.echo(txt)
 
@@ -57,14 +56,12 @@ def get_licenses(
 @licenses.command()
 @click.option('--license-ids')
 @click.option('--license-names')
-@click.option('--expired/--not-expired', default=None)
-@click.pass_context
-def count_licenses(
-        ctx: click.Context,
-        license_ids: Optional[str],
-        license_names: Optional[str],
-        expired: Optional[bool]):
-    api = Client(**ctx.obj['config']['edgescan'])
+@click.option('--expired/--not-expired', default=None, show_default=True)
+def count_licenses(license_ids: Optional[str], license_names: Optional[str], expired: Optional[bool]):
+    """
+    Count licenses.
+    """
+    api = Client()
     total = api.count_licenses(
         ids=str_to_ints(license_ids),
         names=str_to_strs(license_names),
