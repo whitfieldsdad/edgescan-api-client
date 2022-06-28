@@ -8,6 +8,8 @@ from typing import Dict
 from typing import Iterable, List
 from urllib3.util.retry import Retry
 
+import edgescan.api.authentication
+
 logger = logging.getLogger(__name__)
 
 
@@ -43,7 +45,7 @@ class AutomaticRetryPolicy(HttpRequestPolicy):
                 redirect=self.max_retries_on_redirects,
                 backoff_factor=self.backoff_factor,
                 status_forcelist=self.force_retry_on,
-                method_whitelist=False,
+                method_whitelist=None,
             )
         )
 
@@ -53,6 +55,8 @@ def get_automatic_retry_policy() -> AutomaticRetryPolicy:
 
 
 def get_session(api_key: str) -> Session:
+    edgescan.api.authentication.validate_api_key(api_key)
+
     session = Session()
     session.headers.update(get_http_headers(api_key))
 

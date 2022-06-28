@@ -14,11 +14,11 @@ from edgescan.data.types.vulnerability import Vulnerability
 from edgescan.data.parser import CREATE_TIME, UPDATE_TIME
 
 import edgescan.logging
-import edgescan.logging
 import edgescan.time
 import edgescan.patterns
 import edgescan.data.parser as parser
 import edgescan.api.session
+import edgescan.api.authentication
 import urllib.parse
 
 from edgescan.type_hints import TIME, STRS, INTS
