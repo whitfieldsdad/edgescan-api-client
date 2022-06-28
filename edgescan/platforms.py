@@ -55,7 +55,7 @@ def parse_os_type(os_type: Optional[str]) -> Optional[str]:
     ]):
         return LINUX
 
-    elif edgescan.patterns.matches(os_type, patterns=['*darwin*', '*mac*os*', '*os*x*']):
+    elif edgescan.patterns.matches(os_type, patterns=['*darwin*', '*Apple iOS*']):
         return DARWIN
 
     elif edgescan.patterns.matches(os_type, patterns=['*FreeBSD*', '*OpenBSD*', '*pfsense*']):
