@@ -23,20 +23,22 @@ Edgescan's data model includes:
 
 ---
 
-## Package
+## API client
+
+This API client is written in Python and includes a command line interface that you can use to list, count, and retrieve objects.
 
 ### Features
 
 You can use this package to:
 
-- List, count, and retrieve assets, hosts, licenses, and vulnerabilities;
+- List, count, and retrieve assets, hosts, licenses, and vulnerabilities; and
 - Export data from Edgescan in JSONL format
 
 ---
 
 ### Installation
 
-To install the `edgescan` package (requires [`poetry`](https://github.com/python-poetry/poetry)):
+To install the `edgescan-api-client` (requires [`poetry`](https://github.com/python-poetry/poetry)):
 
 ```shell
 $ git clone https://github.com/whitfieldsdad/edgescan-api-client.git
@@ -67,13 +69,13 @@ Code coverage reports will automatically be created in two different formats:
 - HTML: `coverage/html/index.html`
 - JSON: `coverage/json/coverage.json`
 
-To view the HTML-formatted code coverage report:
+To read the HTML-formatted code coverage report:
 
-```
+```shell
 $ open coverage/html/index.html
 ```
 
-To view the JSON-formatted code coverage report:
+To read the JSON-formatted code coverage report:
 
 ```shell
 $ cat coverage/json/coverage.json | jq
@@ -83,11 +85,11 @@ $ cat coverage/json/coverage.json | jq
 
 ### Docker
 
-This repository has been packaged as a Docker container! 
-
-✨📦 🐋✨
+This repository has been packaged as a Docker container! ✨📦🐋✨
 
 #### Building the container
+
+To build the container:
 
 ```shell
 $ make build-container
@@ -95,7 +97,7 @@ $ make build-container
 
 #### Exporting the container to a file
 
-To create a tarball `edgescan-api-client.tar.gz`:
+To export the container to a file named `edgescan-api-client.tar.gz`:
 
 ```shell
 $ make export-container
@@ -107,9 +109,13 @@ $ du -sh edgescan-api-client.tar.gz
 
 ### General usage
 
-#### Command line
+There are two different ways to interact with this module:
+- Via the command line; or
+- Via Python
 
-After installing this package you can access the command line interface as follows:
+#### Command line interface
+
+Using `poetry`:
 
 ```shell
 $ poetry run edgescan
@@ -126,6 +132,8 @@ Commands:
   licenses         Query or count licenses.
   vulnerabilities  Query or count vulnerabilities.
 ```
+
+![Command line interface features](resources/images/command-line-interface.png)
 
 ##### Search for assets
 
@@ -238,8 +246,6 @@ Options:
 
 #### Search for licenses
 
-Licenses are applied to assets.
-
 You can search for licenses by:
 - License ID;
 - License name; and/or
@@ -257,4 +263,116 @@ Options:
   --expired / --not-expired
   --limit INTEGER
   --help                     Show this message and exit.
+```
+
+---
+
+#### Python
+
+##### Search for assets
+
+To look up all assets and list their names:
+
+```python
+from edgescan import Client
+
+api = Client()
+assets = api.iter_assets()
+
+names = {asset['name'] for asset in assets}
+print(', '.join(sorted(names)))
+```
+
+##### Search for hosts
+
+To look up all active hosts and list their locations (i.e. IP addresses and hostnames):
+
+```python
+from edgescan import Client
+
+api = Client()
+locations = set()
+for host in api.iter_hosts(alive=True):
+    locations |= {host['location']} | set(host['hostnames'])
+
+print(', '.join(sorted(locations)))
+```
+
+To look up all active hosts and their OS versions:
+
+```python
+from edgescan import Client
+
+api = Client()
+os_versions = {host['os_name'] for host in api.iter_hosts(alive=True) if host['os_name']}
+print(', '.join(sorted(os_versions)))
+```
+
+To count active hosts by OS type and OS version:
+
+```python
+from edgescan import Client
+from collections import OrderedDict
+
+import edgescan.platforms
+import collections
+import json
+
+api = Client()
+
+tally = collections.defaultdict(lambda: collections.defaultdict(int))
+for host in api.iter_hosts(alive=True):
+    os_version = host['os_name']
+    if os_version:
+        os_type = edgescan.platforms.parse_os_type(os_version)
+        tally[os_type][os_version] += 1
+
+#: Sort by rate of occurrence.
+tally = OrderedDict(sorted(tally.items(), key=lambda e: e[1], reverse=True))
+print(json.dumps(tally, indent=4))
+```
+
+##### Search for licenses
+
+To search for licenses and list their names:
+
+```python
+from edgescan import Client
+
+api = Client()
+names = {row['name'] for row in api.iter_licenses()}
+print(', '.join(sorted(names)))
+```
+
+##### Search for vulnerabilities
+
+To count vulnerabilities on active hosts:
+
+```python
+from edgescan import Client
+
+api = Client()
+total = api.count_vulnerabilities(host_is_alive=True)
+print(total)
+```
+
+To count vulnerabilities on active hosts by CVE ID:
+
+```python
+from edgescan import Client
+from collections import OrderedDict
+
+import collections
+import json
+
+api = Client()
+
+tally = collections.defaultdict(int)
+for vulnerability in api.iter_vulnerabilities(host_is_alive=True):
+    for cve_id in vulnerability['cves']:
+        tally[cve_id] += 1
+
+#: Sort by rate of occurrence.
+tally = OrderedDict(sorted(tally.items(), key=lambda e: e[1], reverse=True))
+print(json.dumps(tally, indent=4))
 ```
