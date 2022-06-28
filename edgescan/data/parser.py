@@ -35,12 +35,12 @@ def parse_object(data: dict, resource_type: str):
 
 
 def parse_asset(data: dict) -> Asset:
-    data |= _parse_timestamps(data)
-    data |= {
+    data.update(_parse_timestamps(data))
+    data.update({
         'active_license': parse_license(data.pop('active_licence')),
         'last_host_scan': edgescan.time.to_datetime(data['last_host_scan']),
         'location_specifiers': [loc for loc in data['location_specifiers']],
-    }
+    })
     assessment = data['current_assessment']
     if assessment:
         data['current_assessment'] = parse_assessment(assessment)
@@ -48,26 +48,26 @@ def parse_asset(data: dict) -> Asset:
 
 
 def parse_vulnerability(data: dict) -> Vulnerability:
-    data |= _parse_timestamps(data)
+    data.update(_parse_timestamps(data))
     return edgescan.types.dict_to_dataclass(data, Vulnerability)
 
 
 def parse_assessment(data: dict) -> Assessment:
-    data |= _parse_timestamps(data)
+    data.update(_parse_timestamps(data))
     return edgescan.types.dict_to_dataclass(data, Assessment)
 
 
 def parse_license(data: dict) -> License:
-    data |= {
+    data.update({
         'license_type_id': data.pop('licence_type_id'),
         'license_type_name': data.pop('licence_type_name'),
-    }
-    data |= _parse_timestamps(data)
+    })
+    data.update(_parse_timestamps(data))
     return edgescan.types.dict_to_dataclass(data, License)
 
 
 def parse_host(data: dict) -> Host:
-    data = _parse_timestamps(data)
+    data.update(_parse_timestamps(data))
     return edgescan.types.dict_to_dataclass(data, Host)
 
 
