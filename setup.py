@@ -5,7 +5,7 @@ with open("README.md", "r", encoding="utf-8") as fh:
 
 setup(
     name='edgescan',
-    version='2.0.6',
+    version='2.0.7',
     author='Tyler Fisher',
     author_email='tylerfisher@tylerfisher.ca',
     description="An API client for EdgeScan",

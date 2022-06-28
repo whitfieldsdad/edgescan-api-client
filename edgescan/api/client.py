@@ -5,6 +5,7 @@ import json
 import os.path
 import shutil
 import tempfile
+import edgescan.caching
 from typing import Iterator, Any, Optional, Dict
 from edgescan.constants import DEFAULT_API_KEY, DEFAULT_HOST, HOSTS, ASSETS, VULNERABILITIES
 from edgescan.data.types.host import Host
@@ -93,6 +94,12 @@ class Client:
             yield row
 
     def _iter_objects(self, resource_type: str) -> Iterator[dict]:
+        if edgescan.caching.is_enabled():
+            yield from self._iter_objects_with_caching(resource_type)
+        else:
+            yield from self._iter_objects_without_caching(resource_type)
+
+    def _iter_objects_with_caching(self, resource_type: str) -> Iterator[dict]:
         url = self.download_urls[resource_type]
         response = self.session.head(url)
 
@@ -118,7 +125,7 @@ class Client:
 
             logger.info("Writing %s to %s", resource_type, path)
             with gzip.open(path, 'w') as fp:
-                for row in response.json()[resource_type]:
+                for row in self._iter_objects_without_caching(resource_type):
                     if row:
                         txt = json.dumps(row) + '\n'
                         fp.write(txt.encode('utf-8'))
@@ -131,6 +138,16 @@ class Client:
                 if line:
                     row = json.loads(line)
                     yield row
+
+    def _iter_objects_without_caching(self, resource_type: str) -> Iterator[dict]:
+        url = self.download_urls[resource_type]
+
+        response = self.session.get(url)
+        response.raise_for_status()
+
+        for row in response.json()[resource_type]:
+            if row:
+                yield row
 
     def count_objects(
             self,

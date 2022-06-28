@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "edgescan"
-version = "2.0.6"
+version = "2.0.7"
 description = "An API client for EdgeScan"
 authors = ["Tyler Fisher <tylerfisher@tylerfisher.ca>"]
 license = "MIT"

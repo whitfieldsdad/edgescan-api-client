@@ -34,6 +34,16 @@ You can use this package to:
 - List, count, and retrieve assets, hosts, licenses, and vulnerabilities; and
 - Export data from Edgescan in JSONL format
 
+### Disclaimers
+
+- This package is not maintained by, or supported by Edgescan.
+
+### Warnings
+
+- The latest version of all hosts, licenses, and vulnerabilities will be written to the system's temporary directory by default <sub>1</sub>.
+
+<sub>1. You can disable this behaviour by setting `EDGESCAN_ENABLE_CACHE=false`</sub>
+
 ---
 
 ### Installation
@@ -48,10 +58,11 @@ $ make install
 
 #### Environment variables
 
-| Name               | Description             | Default           | Required |
-|--------------------|-------------------------|-------------------|----------|
-| `EDGESCAN_HOST`    | Address of Edgescan API | live.edgescan.com | false    |
-| `EDGESCAN_API_KEY` | Edgescan API key        | n/a               | true     |
+| Name                    | Description                                    | Default           | Required |
+|-------------------------|------------------------------------------------|-------------------|----------|
+| `EDGESCAN_HOST`         | Address of Edgescan API                        | live.edgescan.com | false    |
+| `EDGESCAN_API_KEY`      | Edgescan API key                               | n/a               | true     |
+| `EDGESCAN_ENABLE_CACHE` | Enable/disable caching to temporary directory. | n/a               | false    |
 
 ---
 
