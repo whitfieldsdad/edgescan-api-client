@@ -1,4 +1,9 @@
 import collections
+import hashlib
+import json
+import os.path
+import shutil
+import tempfile
 from typing import Iterator, Any, Optional, Dict
 from edgescan.constants import DEFAULT_API_KEY, DEFAULT_HOST, HOSTS, ASSETS, VULNERABILITIES
 from edgescan.data.types.host import Host
@@ -88,13 +93,37 @@ class Client:
 
     def _iter_objects(self, resource_type: str) -> Iterator[dict]:
         url = self.download_urls[resource_type]
-        response = self.session.get(url)
-        response.raise_for_status()
+        response = self.session.head(url)
 
-        reply = response.json()
-        for row in reply[resource_type]:
-            if row:
-                yield row
+        #: Identify the latest version of the data.
+        version = hashlib.md5(response.headers['ETag'].encode('utf-8')).hexdigest()
+
+        #: Cache the latest version of the data locally in a JSONL file in the system's temporary directory.
+        tmp_dir = os.path.join(tempfile.gettempdir(), 'edgescan', resource_type)
+        path = os.path.join(tmp_dir, version + '.jsonl')
+
+        if not os.path.exists(path):
+
+            #: Remove any old versions of the data to avoid filling the temporary directory.
+            if os.path.exists(tmp_dir):
+                shutil.rmtree(tmp_dir)
+
+            os.makedirs(tmp_dir, exist_ok=True)
+            response = self.session.get(url)
+            response.raise_for_status()
+
+            with open(path, 'w') as fp:
+                for row in response.json()[resource_type]:
+                    if row:
+                        fp.write(json.dumps(row) + '\n')
+
+        #: Always read from the filesystem to provide a closed loop.
+        with open(path, 'r') as fp:
+            for line in fp:
+                line = line.strip()
+                if line:
+                    row = json.loads(line)
+                    yield row
 
     def count_objects(
             self,
