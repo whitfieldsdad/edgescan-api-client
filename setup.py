@@ -5,13 +5,13 @@ with open("README.md", "r", encoding="utf-8") as fh:
 
 setup(
     name='edgescan',
-    version='2.0.5',
+    version='2.0.6',
     author='Tyler Fisher',
     author_email='tylerfisher@tylerfisher.ca',
     description="An API client for EdgeScan",
     long_description=long_description,
     long_description_content_type='text/markdown',
-    url='https://github.com/whitfieldsdad/edgescan',
+    url='https://github.com/whitfieldsdad/edgescan-api-client',
     classifiers=[
         'Development Status :: 3 - Alpha',
         'Environment :: Console',

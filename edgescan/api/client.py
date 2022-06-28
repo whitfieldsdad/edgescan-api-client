@@ -1,4 +1,5 @@
 import collections
+import gzip
 import hashlib
 import json
 import os.path
@@ -100,11 +101,14 @@ class Client:
 
         #: Cache the latest version of the data locally in a JSONL file in the system's temporary directory.
         tmp_dir = os.path.join(tempfile.gettempdir(), 'edgescan', resource_type)
-        path = os.path.join(tmp_dir, version + '.jsonl')
+        path = os.path.join(tmp_dir, version + '.jsonl.gz')
 
+        #: Remove empty files.
+        if os.path.exists(path) and os.path.getsize(path) == 0:
+            os.unlink(path)
+
+        #: Download the file if it hasn't already been downloaded yet.
         if not os.path.exists(path):
-
-            #: Remove any old versions of the data to avoid filling the temporary directory.
             if os.path.exists(tmp_dir):
                 shutil.rmtree(tmp_dir)
 
@@ -112,13 +116,16 @@ class Client:
             response = self.session.get(url)
             response.raise_for_status()
 
-            with open(path, 'w') as fp:
+            logger.info("Writing %s to %s", resource_type, path)
+            with gzip.open(path, 'w') as fp:
                 for row in response.json()[resource_type]:
                     if row:
-                        fp.write(json.dumps(row) + '\n')
+                        txt = json.dumps(row) + '\n'
+                        fp.write(txt.encode('utf-8'))
 
         #: Always read from the filesystem to provide a closed loop.
-        with open(path, 'r') as fp:
+        logger.info("Reading %s from %s", resource_type, path)
+        with gzip.open(path, 'rb') as fp:
             for line in fp:
                 line = line.strip()
                 if line:

@@ -43,7 +43,7 @@ class AutomaticRetryPolicy(HttpRequestPolicy):
                 redirect=self.max_retries_on_redirects,
                 backoff_factor=self.backoff_factor,
                 status_forcelist=self.force_retry_on,
-                allowed_methods=False,
+                method_whitelist=False,
             )
         )
 
